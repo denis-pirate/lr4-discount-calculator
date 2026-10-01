@@ -150,3 +150,94 @@
   font-size: 19px;
   color: #2563eb;
 }
+
+/* --- Задание 1: список позиций --- */
+.item {
+  margin-bottom: 16px;
+  padding: 16px;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+}
+
+.item__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.item__title {
+  margin: 0;
+  font-size: 15px;
+  color: #111827;
+}
+
+.item__remove {
+  padding: 4px 8px;
+  font-size: 14px;
+  color: #ef4444;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.item__remove:hover:not(:disabled) {
+  background: #fef2f2;
+}
+
+.item__remove:disabled {
+  color: #9ca3af;
+  cursor: not-allowed;
+}
+
+/* В карточке позиции последнее поле без нижнего отступа */
+.item .field:last-child {
+  margin-bottom: 0;
+}
+
+.add-item {
+  width: 100%;
+  margin-bottom: 20px;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* --- Задание 1: таблица результатов по позициям --- */
+.results__scroll {
+  margin-bottom: 8px;
+  overflow-x: auto;
+}
+
+.results__table--items {
+  font-size: 14px;
+}
+
+.results__table--items th {
+  padding: 8px 0 8px 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #6b7280;
+  text-align: left;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.results__table--items th:first-child {
+  padding-left: 0;
+}
+
+.results__table--items td {
+  padding-left: 8px;
+}
+
+.results__table--items td:first-child {
+  padding-left: 0;
+  text-align: left;
+}
+
+.results__table--items th.results__value {
+  text-align: right;
+}

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import "./DiscountCalculator.css";
 
 // Справочник категорий: ключ — id, значение — { label, discount }
@@ -14,74 +14,126 @@ const CATEGORIES = [
 // Ставка НДС в долях (22%)
 const VAT_RATE = 0.22;
 
+// Максимум позиций в заказе (ограничивает высоту формы и таблицы результатов)
+const MAX_ITEMS = 10;
+
+// Категория по умолчанию для новой позиции
+const DEFAULT_CATEGORY = "electronics";
+
 function DiscountCalculator() {
   // --- Состояние ---
-  // Исходная цена, введённая пользователем (строка — для controlled input)
-  const [price, setPrice] = useState("");
-  // ID выбранной категории
-  const [category, setCategory] = useState("electronics");
+  // Список позиций заказа. Каждая позиция: { id, price, category }
+  // price — строка (для controlled input), category — id из CATEGORIES
+  const [items, setItems] = useState(() => [
+    { id: 1, price: "", category: DEFAULT_CATEGORY },
+  ]);
+  // Счётчик для id новых позиций. id — стабильный key для React:
+  // с индексом вместо id при удалении из середины списка поля «поедут»
+  const nextIdRef = useRef(2);
   // Признак того, что пользователь нажал «Рассчитать»
   // До первого нажатия результаты не показываем
   const [calculated, setCalculated] = useState(false);
-  // Сообщение об ошибке валидации цены
-  const [error, setError] = useState("");
+  // Ошибки валидации по позициям: { [id]: "текст ошибки" }
+  const [errors, setErrors] = useState({});
 
   // --- Обработчики событий ---
+  // Создаёт пустую позицию с новым id
+  function makeItem() {
+    const id = nextIdRef.current;
+    nextIdRef.current += 1;
+    return { id, price: "", category: DEFAULT_CATEGORY };
+  }
+
+  // Точечное изменение одной позиции; любое изменение делает результат устаревшим
+  function updateItem(id, patch) {
+    setItems((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, ...patch } : item))
+    );
+    setCalculated(false);
+  }
+
   // Изменение цены: разрешаем только цифры и точку
-  function handlePriceChange(e) {
+  function handlePriceChange(id, e) {
     const value = e.target.value;
     // Разрешаем пустую строку (чтобы пользователь мог стереть поле)
     // и числа с одной точкой
     if (value === "" || /^\d*\.?\d*$/.test(value)) {
-      setPrice(value);
-      setError("");         // Сбрасываем ошибку при вводе
-      setCalculated(false); // Пересчёт нужен заново
+      updateItem(id, { price: value });
+      setErrors((prev) => ({ ...prev, [id]: "" })); // Сбрасываем ошибку этой позиции
     }
   }
 
   // Изменение категории
-  function handleCategoryChange(e) {
-    setCategory(e.target.value);
-    setCalculated(false); // Категория изменилась — результаты устарели
-  }
-  // Нажатие кнопки «Рассчитать»
-  function handleCalculate() {
-    // Парсим цену в число
-    const numPrice = parseFloat(price);
-    // Валидация: пустое поле
-    if (!price.trim()) {
-      setError("Введите цену товара");
-      setCalculated(false);
-      return;
-    }
-    // Валидация: не число или отрицательное
-    if (isNaN(numPrice) || numPrice <= 0) {
-      setError("Цена должна быть положительным числом");
-      setCalculated(false);
-      return;
-    }
-    // Валидация прошла — показываем результаты
-    setError("");
-    setCalculated(true);
+  function handleCategoryChange(id, e) {
+    updateItem(id, { category: e.target.value });
   }
 
-  // Сброс формы
-  function handleReset() {
-    setPrice("");
-    setCategory("electronics");
+  // Добавление позиции
+  function handleAddItem() {
+    if (items.length >= MAX_ITEMS) return;
+    setItems((prev) => [...prev, makeItem()]);
     setCalculated(false);
-    setError("");
+  }
+
+  // Удаление позиции (последнюю оставляем)
+  function handleRemoveItem(id) {
+    if (items.length <= 1) return;
+    setItems((prev) => prev.filter((item) => item.id !== id));
+    setErrors((prev) => ({ ...prev, [id]: "" }));
+    setCalculated(false);
+  }
+
+  // Нажатие кнопки «Рассчитать»
+  function handleCalculate() {
+    // Проверяем все позиции сразу, чтобы показать все ошибки за один раз
+    const nextErrors = {};
+    for (const item of items) {
+      const numPrice = parseFloat(item.price);
+      // Валидация: пустое поле
+      if (!item.price.trim()) {
+        nextErrors[item.id] = "Введите цену товара";
+      // Валидация: не число или не положительное
+      } else if (isNaN(numPrice) || numPrice <= 0) {
+        nextErrors[item.id] = "Цена должна быть положительным числом";
+      }
+    }
+    setErrors(nextErrors);
+    // Результаты показываем, только если ошибок нет ни в одной позиции
+    setCalculated(Object.keys(nextErrors).length === 0);
+  }
+
+  // Сброс формы: одна пустая позиция
+  function handleReset() {
+    setItems([makeItem()]);
+    setCalculated(false);
+    setErrors({});
   }
 
   // --- Вычисления ---
-  // Находим объект выбранной категории
-  const selectedCategory = CATEGORIES.find((c) => c.id === category);
-  // Все вычисления проводим только если calculated === true
-  // и цена корректна
-  const numPrice = parseFloat(price) || 0;
-  const discountPercent = selectedCategory ? selectedCategory.discount : 0;
-  const discountAmount = calculated ? numPrice * (discountPercent / 100) : 0;
-  const priceAfterDiscount = calculated ? numPrice - discountAmount : 0;
+  // Расчёт по каждой позиции
+  const lines = items.map((item) => {
+    const category = CATEGORIES.find((c) => c.id === item.category);
+    const numPrice = parseFloat(item.price) || 0;
+    const discountPercent = category ? category.discount : 0;
+    const discountAmount = numPrice * (discountPercent / 100);
+    return {
+      id: item.id,
+      label: category ? category.label : "—",
+      numPrice,
+      discountPercent,
+      discountAmount,
+      priceAfterDiscount: numPrice - discountAmount,
+    };
+  });
+  // Итоги по заказу считаем по сумме позиций
+  // Показываем их только если calculated === true
+  const subtotal = calculated
+    ? lines.reduce((sum, line) => sum + line.numPrice, 0)
+    : 0;
+  const discountTotal = calculated
+    ? lines.reduce((sum, line) => sum + line.discountAmount, 0)
+    : 0;
+  const priceAfterDiscount = calculated ? subtotal - discountTotal : 0;
   const vatAmount = calculated ? priceAfterDiscount * VAT_RATE : 0;
   const total = calculated ? priceAfterDiscount + vatAmount : 0;
   // Вспомогательная функция: форматирование в рублях
@@ -91,49 +143,85 @@ function DiscountCalculator() {
       maximumFractionDigits: 2,
     });
   }
+  // Скидка со знаком «−»; нулевую скидку показываем без минуса (а не «−0,00 ₽»)
+  function formatDiscount(value) {
+    return value > 0 ? `−${formatRub(value)} ₽` : `${formatRub(0)} ₽`;
+  }
 
   // --- Разметка ---
   return (
     <div className="calculator-wrapper">
       <h2 className="calculator-title">Калькулятор скидок</h2>
 
-      {/* Поле ввода цены */}
-      <div className="field">
-        <label htmlFor="price" className="field__label">
-          Цена товара (₽)
-        </label>
-        <input
-          id="price"
-          type="text"
-          className={`field__input ${error ? "field__input--error" : ""}`}
-          value={price}
-          onChange={handlePriceChange}
-          placeholder="Например: 1000"
-          inputMode="decimal"
-        />
-        {/* Показываем ошибку, если она есть */}
-        {error && <span className="field__error">{error}</span>}
-      </div>
+      {/* Список позиций */}
+      {items.map((item, index) => {
+        const itemError = errors[item.id];
+        return (
+          <div className="item" key={item.id}>
+            <div className="item__header">
+              <h3 className="item__title">Товар {index + 1}</h3>
+              <button
+                type="button"
+                className="item__remove"
+                onClick={() => handleRemoveItem(item.id)}
+                disabled={items.length === 1}
+                aria-label={`Удалить товар ${index + 1}`}
+              >
+                Удалить
+              </button>
+            </div>
 
-      {/* Выбор категории */}
-      <div className="field">
-        <label htmlFor="category" className="field__label">
-          Категория товара
-        </label>
-        <select
-          id="category"
-          className="field__input field__select"
-          value={category}
-          onChange={handleCategoryChange}
-        >
-          {/* Генерируем <option> из справочника категорий */}
-          {CATEGORIES.map((cat) => (
-            <option key={cat.id} value={cat.id}>
-              {cat.label} — скидка {cat.discount}%
-            </option>
-          ))}
-        </select>
-      </div>
+            {/* Поле ввода цены */}
+            <div className="field">
+              <label htmlFor={`price-${item.id}`} className="field__label">
+                Цена товара (₽)
+              </label>
+              <input
+                id={`price-${item.id}`}
+                type="text"
+                className={`field__input ${itemError ? "field__input--error" : ""}`}
+                value={item.price}
+                onChange={(e) => handlePriceChange(item.id, e)}
+                placeholder="Например: 1000"
+                inputMode="decimal"
+              />
+              {/* Показываем ошибку, если она есть */}
+              {itemError && <span className="field__error">{itemError}</span>}
+            </div>
+
+            {/* Выбор категории */}
+            <div className="field">
+              <label htmlFor={`category-${item.id}`} className="field__label">
+                Категория товара
+              </label>
+              <select
+                id={`category-${item.id}`}
+                className="field__input field__select"
+                value={item.category}
+                onChange={(e) => handleCategoryChange(item.id, e)}
+              >
+                {/* Генерируем <option> из справочника категорий */}
+                {CATEGORIES.map((cat) => (
+                  <option key={cat.id} value={cat.id}>
+                    {cat.label} — скидка {cat.discount}%
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        );
+      })}
+
+      {/* Добавление позиции */}
+      <button
+        type="button"
+        className="btn btn--secondary add-item"
+        onClick={handleAddItem}
+        disabled={items.length >= MAX_ITEMS}
+      >
+        + Добавить товар ({items.length} из {MAX_ITEMS})
+      </button>
+
       {/* Кнопки */}
       <div className="actions">
         <button type="button" className="btn btn--primary" onClick={handleCalculate}>
@@ -145,21 +233,51 @@ function DiscountCalculator() {
       </div>
 
       {/* Результаты — показываем только после расчёта */}
-      {calculated && !error && (
+      {calculated && (
         <div className="results">
           <h3 className="results__title">Результат расчёта</h3>
+
+          {/* Расчёт по позициям */}
+          <div className="results__scroll">
+            <table className="results__table results__table--items">
+              <thead>
+                <tr>
+                  <th>Товар</th>
+                  <th className="results__value">Цена</th>
+                  <th className="results__value">Скидка</th>
+                  <th className="results__value">Со скидкой</th>
+                </tr>
+              </thead>
+              <tbody>
+                {lines.map((line, index) => (
+                  <tr key={line.id}>
+                    <td>
+                      {index + 1}. {line.label} ({line.discountPercent}%)
+                    </td>
+                    <td className="results__value">{formatRub(line.numPrice)} ₽</td>
+                    <td className="results__value results__value--discount">
+                      {formatDiscount(line.discountAmount)}
+                    </td>
+                    <td className="results__value">
+                      {formatRub(line.priceAfterDiscount)} ₽
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Итоги по заказу */}
           <table className="results__table">
             <tbody>
               <tr>
-                <td>Исходная цена</td>
-                <td className="results__value">{formatRub(numPrice)} ₽</td>
+                <td>Сумма без скидки</td>
+                <td className="results__value">{formatRub(subtotal)} ₽</td>
               </tr>
               <tr>
-                <td>
-                  Скидка ({discountPercent}%, категория «{selectedCategory.label}»)
-                </td>
+                <td>Скидка (всего)</td>
                 <td className="results__value results__value--discount">
-                  −{formatRub(discountAmount)} ₽
+                  {formatDiscount(discountTotal)}
                 </td>
               </tr>
               <tr>
