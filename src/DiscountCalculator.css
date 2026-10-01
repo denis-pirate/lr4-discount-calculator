@@ -241,3 +241,10 @@
 .results__table--items th.results__value {
   text-align: right;
 }
+
+/* --- Задание 2: промокод --- */
+.results__note {
+  margin: 0 0 12px;
+  font-size: 14px;
+  color: #15803d;
+}

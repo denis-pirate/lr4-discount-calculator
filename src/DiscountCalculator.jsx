@@ -14,6 +14,13 @@ const CATEGORIES = [
 // Ставка НДС в долях (22%)
 const VAT_RATE = 0.22;
 
+// Промокоды: code — в верхнем регистре, discount — процентные пункты,
+// которые ПРИБАВЛЯЮТСЯ к скидке категории (например, 20% + 10% = 30%)
+const PROMO_CODES = [{ code: "WELCOME10", discount: 10 }];
+
+// Верхняя граница итоговой скидки на позицию (%) — защита на случай новых промокодов
+const MAX_DISCOUNT_PERCENT = 100;
+
 // Максимум позиций в заказе (ограничивает высоту формы и таблицы результатов)
 const MAX_ITEMS = 10;
 
@@ -35,6 +42,9 @@ function DiscountCalculator() {
   const [calculated, setCalculated] = useState(false);
   // Ошибки валидации по позициям: { [id]: "текст ошибки" }
   const [errors, setErrors] = useState({});
+  // Введённый промокод (строка — для controlled input) и ошибка по нему
+  const [promo, setPromo] = useState("");
+  const [promoError, setPromoError] = useState("");
 
   // --- Обработчики событий ---
   // Создаёт пустую позицию с новым id
@@ -68,6 +78,13 @@ function DiscountCalculator() {
     updateItem(id, { category: e.target.value });
   }
 
+  // Изменение промокода: ошибка сбрасывается, результат устаревает
+  function handlePromoChange(e) {
+    setPromo(e.target.value);
+    setPromoError("");
+    setCalculated(false);
+  }
+
   // Добавление позиции
   function handleAddItem() {
     if (items.length >= MAX_ITEMS) return;
@@ -98,23 +115,39 @@ function DiscountCalculator() {
       }
     }
     setErrors(nextErrors);
-    // Результаты показываем, только если ошибок нет ни в одной позиции
-    setCalculated(Object.keys(nextErrors).length === 0);
+    // Валидация промокода: пустое поле допустимо, непустой должен быть известным
+    const code = promo.trim().toUpperCase();
+    const nextPromoError =
+      code && !PROMO_CODES.some((p) => p.code === code) ? "Промокод не найден" : "";
+    setPromoError(nextPromoError);
+    // Результаты показываем, только если нет ошибок ни в позициях, ни в промокоде
+    setCalculated(Object.keys(nextErrors).length === 0 && !nextPromoError);
   }
 
-  // Сброс формы: одна пустая позиция
+  // Сброс формы: одна пустая позиция, без промокода
   function handleReset() {
     setItems([makeItem()]);
+    setPromo("");
     setCalculated(false);
     setErrors({});
+    setPromoError("");
   }
 
   // --- Вычисления ---
+  // Применённый промокод (если введён известный); неизвестный даёт 0
+  const promoCode = promo.trim().toUpperCase();
+  const activePromo = PROMO_CODES.find((p) => p.code === promoCode);
+  const promoPercent = activePromo ? activePromo.discount : 0;
   // Расчёт по каждой позиции
   const lines = items.map((item) => {
     const category = CATEGORIES.find((c) => c.id === item.category);
     const numPrice = parseFloat(item.price) || 0;
-    const discountPercent = category ? category.discount : 0;
+    // Процент скидки категории + процент промокода (складываем), не выше потолка
+    const categoryPercent = category ? category.discount : 0;
+    const discountPercent = Math.min(
+      categoryPercent + promoPercent,
+      MAX_DISCOUNT_PERCENT
+    );
     const discountAmount = numPrice * (discountPercent / 100);
     return {
       id: item.id,
@@ -212,6 +245,25 @@ function DiscountCalculator() {
         );
       })}
 
+      {/* Промокод (необязательно) */}
+      <div className="field">
+        <label htmlFor="promo" className="field__label">
+          Промокод (необязательно)
+        </label>
+        <input
+          id="promo"
+          type="text"
+          className={`field__input ${promoError ? "field__input--error" : ""}`}
+          value={promo}
+          onChange={handlePromoChange}
+          placeholder="Например: WELCOME10"
+          maxLength={20}
+          autoComplete="off"
+          spellCheck={false}
+        />
+        {promoError && <span className="field__error">{promoError}</span>}
+      </div>
+
       {/* Добавление позиции */}
       <button
         type="button"
@@ -236,6 +288,14 @@ function DiscountCalculator() {
       {calculated && (
         <div className="results">
           <h3 className="results__title">Результат расчёта</h3>
+
+          {/* Пояснение про промокод: проценты в таблице уже включают его */}
+          {activePromo && (
+            <p className="results__note">
+              Промокод {activePromo.code}: +{activePromo.discount}% к скидке
+              каждой позиции
+            </p>
+          )}
 
           {/* Расчёт по позициям */}
           <div className="results__scroll">
