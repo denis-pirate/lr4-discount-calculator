@@ -13,6 +13,8 @@ const CATEGORIES = [
 
 // Ставка НДС в долях (22%)
 const VAT_RATE = 0.22;
+// Та же ставка в процентах — для подписей (чтобы не дублировать «22» в разметке)
+const VAT_PERCENT = Math.round(VAT_RATE * 100);
 
 // Промокоды: code — в верхнем регистре, discount — процентные пункты,
 // которые ПРИБАВЛЯЮТСЯ к скидке категории (например, 20% + 10% = 30%)
@@ -57,6 +59,8 @@ function DiscountCalculator() {
   // в диапазоне min..max, промежуточных «неполных» значений у него не бывает
   const [manualEnabled, setManualEnabled] = useState(false);
   const [manualDiscount, setManualDiscount] = useState(MANUAL_DISCOUNT_DEFAULT);
+  // Начислять ли НДС (true — «С НДС», false — «Без НДС»)
+  const [withVat, setWithVat] = useState(true);
 
   // --- Обработчики событий ---
   // Создаёт пустую позицию с новым id
@@ -109,6 +113,12 @@ function DiscountCalculator() {
     setCalculated(false);
   }
 
+  // Переключатель НДС: значение радио-кнопки "with" / "without"; результат устаревает
+  function handleVatChange(e) {
+    setWithVat(e.target.value === "with");
+    setCalculated(false);
+  }
+
   // Добавление позиции
   function handleAddItem() {
     if (items.length >= MAX_ITEMS) return;
@@ -154,6 +164,7 @@ function DiscountCalculator() {
     setPromo("");
     setManualEnabled(false);
     setManualDiscount(MANUAL_DISCOUNT_DEFAULT);
+    setWithVat(true);
     setCalculated(false);
     setErrors({});
     setPromoError("");
@@ -195,7 +206,8 @@ function DiscountCalculator() {
     ? lines.reduce((sum, line) => sum + line.discountAmount, 0)
     : 0;
   const priceAfterDiscount = calculated ? subtotal - discountTotal : 0;
-  const vatAmount = calculated ? priceAfterDiscount * VAT_RATE : 0;
+  // НДС начисляется только при withVat === true
+  const vatAmount = calculated && withVat ? priceAfterDiscount * VAT_RATE : 0;
   const total = calculated ? priceAfterDiscount + vatAmount : 0;
   // Вспомогательная функция: форматирование в рублях
   function formatRub(value) {
@@ -337,6 +349,35 @@ function DiscountCalculator() {
         {promoError && <span className="field__error">{promoError}</span>}
       </div>
 
+      {/* Переключатель НДС */}
+      <div className="field" role="radiogroup" aria-labelledby="vat-label">
+        <span id="vat-label" className="field__label">
+          НДС ({VAT_PERCENT}%)
+        </span>
+        <div className="radio-group">
+          <label className="radio">
+            <input
+              type="radio"
+              name="vat"
+              value="with"
+              checked={withVat}
+              onChange={handleVatChange}
+            />
+            С НДС
+          </label>
+          <label className="radio">
+            <input
+              type="radio"
+              name="vat"
+              value="without"
+              checked={!withVat}
+              onChange={handleVatChange}
+            />
+            Без НДС
+          </label>
+        </div>
+      </div>
+
       {/* Кнопки */}
       <div className="actions">
         <button type="button" className="btn btn--primary" onClick={handleCalculate}>
@@ -417,8 +458,10 @@ function DiscountCalculator() {
                 <td className="results__value">{formatRub(priceAfterDiscount)} ₽</td>
               </tr>
               <tr>
-                <td>НДС (22%)</td>
-                <td className="results__value">+{formatRub(vatAmount)} ₽</td>
+                <td>{withVat ? `НДС (${VAT_PERCENT}%)` : "НДС"}</td>
+                <td className="results__value">
+                  {withVat ? `+${formatRub(vatAmount)} ₽` : "не начисляется"}
+                </td>
               </tr>
               <tr className="results__row--total">
                 <td>Итого к оплате</td>
