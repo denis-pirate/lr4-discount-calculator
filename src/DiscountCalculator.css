@@ -243,8 +243,61 @@
 }
 
 /* --- Задание 2: промокод --- */
+.results__notes {
+  margin-bottom: 12px;
+}
+
 .results__note {
-  margin: 0 0 12px;
+  margin: 0 0 4px;
   font-size: 14px;
   color: #15803d;
+}
+
+/* --- Задание 3: ручная скидка (ползунок) --- */
+.checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #333;
+  cursor: pointer;
+}
+
+.checkbox input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  cursor: pointer;
+}
+
+.slider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.slider__range {
+  flex: 1;
+  margin: 0;
+  accent-color: #3b82f6;
+  cursor: pointer;
+}
+
+.slider__range:disabled {
+  cursor: not-allowed;
+}
+
+.slider__value {
+  min-width: 44px;
+  font-size: 15px;
+  font-weight: 600;
+  color: #111827;
+  text-align: right;
+}
+
+.field__select:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }

@@ -19,7 +19,14 @@ const VAT_RATE = 0.22;
 const PROMO_CODES = [{ code: "WELCOME10", discount: 10 }];
 
 // Верхняя граница итоговой скидки на позицию (%) — защита на случай новых промокодов
+// и расширения диапазона ручной скидки (сейчас максимум 50% + 10% = 60%)
 const MAX_DISCOUNT_PERCENT = 100;
+
+// Ручная скидка (ползунок): диапазон, шаг и значение по умолчанию, %
+const MANUAL_DISCOUNT_MIN = 0;
+const MANUAL_DISCOUNT_MAX = 50;
+const MANUAL_DISCOUNT_STEP = 1;
+const MANUAL_DISCOUNT_DEFAULT = 10;
 
 // Максимум позиций в заказе (ограничивает высоту формы и таблицы результатов)
 const MAX_ITEMS = 10;
@@ -45,6 +52,11 @@ function DiscountCalculator() {
   // Введённый промокод (строка — для controlled input) и ошибка по нему
   const [promo, setPromo] = useState("");
   const [promoError, setPromoError] = useState("");
+  // Ручная скидка: включена ли и её значение в процентах.
+  // Значение — число (не строка, как цена): range-input сам держит его
+  // в диапазоне min..max, промежуточных «неполных» значений у него не бывает
+  const [manualEnabled, setManualEnabled] = useState(false);
+  const [manualDiscount, setManualDiscount] = useState(MANUAL_DISCOUNT_DEFAULT);
 
   // --- Обработчики событий ---
   // Создаёт пустую позицию с новым id
@@ -82,6 +94,18 @@ function DiscountCalculator() {
   function handlePromoChange(e) {
     setPromo(e.target.value);
     setPromoError("");
+    setCalculated(false);
+  }
+
+  // Включение/выключение ручной скидки: результат устаревает
+  function handleManualToggle(e) {
+    setManualEnabled(e.target.checked);
+    setCalculated(false);
+  }
+
+  // Движение ползунка: значение приходит строкой, приводим к числу
+  function handleManualDiscountChange(e) {
+    setManualDiscount(Number(e.target.value));
     setCalculated(false);
   }
 
@@ -124,10 +148,12 @@ function DiscountCalculator() {
     setCalculated(Object.keys(nextErrors).length === 0 && !nextPromoError);
   }
 
-  // Сброс формы: одна пустая позиция, без промокода
+  // Сброс формы: одна пустая позиция, без промокода и ручной скидки
   function handleReset() {
     setItems([makeItem()]);
     setPromo("");
+    setManualEnabled(false);
+    setManualDiscount(MANUAL_DISCOUNT_DEFAULT);
     setCalculated(false);
     setErrors({});
     setPromoError("");
@@ -142,10 +168,12 @@ function DiscountCalculator() {
   const lines = items.map((item) => {
     const category = CATEGORIES.find((c) => c.id === item.category);
     const numPrice = parseFloat(item.price) || 0;
-    // Процент скидки категории + процент промокода (складываем), не выше потолка
+    // Базовая скидка: ручная (если включена) ЗАМЕНЯЕТ скидку категории
     const categoryPercent = category ? category.discount : 0;
+    const basePercent = manualEnabled ? manualDiscount : categoryPercent;
+    // Базовая + промокод (складываем), не выше потолка
     const discountPercent = Math.min(
-      categoryPercent + promoPercent,
+      basePercent + promoPercent,
       MAX_DISCOUNT_PERCENT
     );
     const discountAmount = numPrice * (discountPercent / 100);
@@ -232,6 +260,12 @@ function DiscountCalculator() {
                 className="field__input field__select"
                 value={item.category}
                 onChange={(e) => handleCategoryChange(item.id, e)}
+                disabled={manualEnabled}
+                title={
+                  manualEnabled
+                    ? "Включена ручная скидка — скидка категории не учитывается"
+                    : undefined
+                }
               >
                 {/* Генерируем <option> из справочника категорий */}
                 {CATEGORIES.map((cat) => (
@@ -244,6 +278,45 @@ function DiscountCalculator() {
           </div>
         );
       })}
+
+      {/* Добавление позиции */}
+      <button
+        type="button"
+        className="btn btn--secondary add-item"
+        onClick={handleAddItem}
+        disabled={items.length >= MAX_ITEMS}
+      >
+        + Добавить товар ({items.length} из {MAX_ITEMS})
+      </button>
+
+      {/* Ручная скидка на весь заказ: заменяет скидку категории */}
+      <div className="field">
+        <label className="checkbox">
+          <input
+            type="checkbox"
+            checked={manualEnabled}
+            onChange={handleManualToggle}
+          />
+          Задать скидку вручную (вместо скидки категории)
+        </label>
+        <div className="slider">
+          <input
+            id="manual-discount"
+            type="range"
+            className="slider__range"
+            min={MANUAL_DISCOUNT_MIN}
+            max={MANUAL_DISCOUNT_MAX}
+            step={MANUAL_DISCOUNT_STEP}
+            value={manualDiscount}
+            onChange={handleManualDiscountChange}
+            disabled={!manualEnabled}
+            aria-label="Ручная скидка, %"
+          />
+          <output htmlFor="manual-discount" className="slider__value">
+            {manualDiscount}%
+          </output>
+        </div>
+      </div>
 
       {/* Промокод (необязательно) */}
       <div className="field">
@@ -264,16 +337,6 @@ function DiscountCalculator() {
         {promoError && <span className="field__error">{promoError}</span>}
       </div>
 
-      {/* Добавление позиции */}
-      <button
-        type="button"
-        className="btn btn--secondary add-item"
-        onClick={handleAddItem}
-        disabled={items.length >= MAX_ITEMS}
-      >
-        + Добавить товар ({items.length} из {MAX_ITEMS})
-      </button>
-
       {/* Кнопки */}
       <div className="actions">
         <button type="button" className="btn btn--primary" onClick={handleCalculate}>
@@ -289,12 +352,21 @@ function DiscountCalculator() {
         <div className="results">
           <h3 className="results__title">Результат расчёта</h3>
 
-          {/* Пояснение про промокод: проценты в таблице уже включают его */}
-          {activePromo && (
-            <p className="results__note">
-              Промокод {activePromo.code}: +{activePromo.discount}% к скидке
-              каждой позиции
-            </p>
+          {/* Пояснения: проценты в таблице уже включают ручную скидку и промокод */}
+          {(manualEnabled || activePromo) && (
+            <div className="results__notes">
+              {manualEnabled && (
+                <p className="results__note">
+                  Ручная скидка {manualDiscount}% заменяет скидки категорий
+                </p>
+              )}
+              {activePromo && (
+                <p className="results__note">
+                  Промокод {activePromo.code}: +{activePromo.discount}% к скидке
+                  каждой позиции
+                </p>
+              )}
+            </div>
           )}
 
           {/* Расчёт по позициям */}
